@@ -1,0 +1,44 @@
+{
+  "name": "dot-kanban",
+  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/api.mjs && node tests/sender.mjs && node tests/routing.mjs && node tests/services.mjs && node tests/request-body.mjs && node tests/api-client.mjs && node tests/oauth-redirects.mjs",
+    "test:ci": "node scripts/test-ci.mjs",
+    "test:csp-browser": "node tests/csp-browser.mjs",
+    "test:ui-browser": "node tests/ui-browser.mjs",
+    "check:public": "node scripts/check-public-config.mjs",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "predeploy": "npm run check:public && npm run build",
+    "deploy": "npm run db:migrate:remote && wrangler deploy",
+    "deploy:check": "wrangler deploy --dry-run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "@cloudflare/workers-oauth-provider": "1.2.3",
+    "ipaddr.js": "^2.5.0",
+    "jose": "^6.2.12",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "standardwebhooks": "^1.1.1",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261012.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "playwright": "^1.64.0",
+    "prettier": "3.9.10",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.0",
+    "wrangler": "4.149.0"
+  }
+}

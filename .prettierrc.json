@@ -1,0 +1,18 @@
+{
+  "printWidth": 100,
+  "proseWrap": "preserve",
+  "overrides": [
+    {
+      "files": "*.webmanifest",
+      "options": {
+        "parser": "json"
+      }
+    },
+    {
+      "files": "*.jsonc",
+      "options": {
+        "trailingComma": "none"
+      }
+    }
+  ]
+}

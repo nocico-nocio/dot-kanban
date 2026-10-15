@@ -1,0 +1,16 @@
+ADMIN_TOKEN=
+AGENT_TOKEN=
+ACCESS_TEAM_DOMAIN=
+ACCESS_AUD=
+ACCESS_OWNER_EMAIL=
+OAUTH_RESOURCE=
+MCP_ALLOWED_REDIRECT_URI=
+# Optional additional exact callback URLs, comma-separated
+MCP_ALLOWED_REDIRECT_URIS=
+# Optional: true permits port changes only for allowlisted local HTTP host/path pairs.
+# Other callbacks still require an exact match. Default: disabled.
+MCP_ALLOW_LOOPBACK_PORT_VARIATION=
+# Optional Events: use only with the Container config.
+# EVENTS_ENABLED=
+# EVENT_ENCRYPTION_KEY=
+# SENDER_INTERNAL_SECRET=
