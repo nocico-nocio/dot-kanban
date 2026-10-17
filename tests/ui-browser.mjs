@@ -25,6 +25,34 @@ async function assertMobileInputSizes(page) {
     );
   assert.deepEqual(small, [], "all visible mobile form controls are at least 16px");
 }
+async function assertDragAppearance(card, active) {
+  await card.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    );
+  });
+  const appearance = await card.evaluate((element) => {
+    const wrap = element.closest(".task-wrap");
+    return {
+      dragging: wrap.classList.contains("dragging"),
+      opacity: Number(getComputedStyle(wrap).opacity),
+      transform: getComputedStyle(element).transform,
+      shadow: getComputedStyle(element).boxShadow,
+      cursor: getComputedStyle(element).cursor,
+    };
+  });
+  assert.equal(appearance.dragging, active);
+  assert.equal(appearance.opacity, active ? 0.45 : 1);
+  if (active) {
+    assert.equal(appearance.transform, "matrix(1.02, 0, 0, 1.02, 0, -4)");
+    assert.equal(appearance.cursor, "grabbing");
+    assert.ok(appearance.shadow.includes("28px"), "dragged card has a raised shadow");
+  } else {
+    assert.ok(!appearance.transform.includes("1.02"), "drag lift is removed");
+    assert.ok(!appearance.shadow.includes("28px"), "drag shadow is removed");
+  }
+}
+
 async function reloadBoard(page) {
   const response = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/tasks",
@@ -856,6 +884,60 @@ try {
     await drawer.locator(".detail > :first-child").getAttribute("class"),
     "drawer-project-row",
   );
+  await page.setViewportSize({ width: 390, height: 844 });
+  const statusEditor = drawer.locator(".task-status-editor");
+  const statusSelect = statusEditor.getByRole("combobox");
+  await statusSelect.selectOption("todo");
+  assert.equal(tasks[0].status, "backlog", "selection alone does not save");
+  await statusEditor.getByRole("button", { name: "キャンセル", exact: true }).click();
+  assert.equal(await statusSelect.inputValue(), "backlog");
+  await statusSelect.selectOption("todo");
+  rejectProjectChange = true;
+  await statusEditor.getByRole("button", { name: "保存", exact: true }).click();
+  await statusEditor.getByRole("alert").waitFor();
+  assert.equal(tasks[0].status, "backlog", "failed save preserves server status");
+  rejectProjectChange = false;
+  let statusPatches = 0;
+  let releaseStatus;
+  const statusGate = new Promise((resolve) => {
+    releaseStatus = resolve;
+  });
+  await page.route("**/api/tasks/" + tasks[0].id, async (route) => {
+    if (route.request().method() === "PATCH") {
+      statusPatches++;
+      await statusGate;
+    }
+    await route.continue();
+  });
+  await statusEditor.getByRole("button", { name: "保存", exact: true }).evaluate((button) => {
+    button.click();
+    button.click();
+  });
+  await page.waitForFunction(() => document.querySelector(".task-status-editor select").disabled);
+  assert.equal(
+    await statusEditor.getByRole("button", { name: "キャンセル", exact: true }).isDisabled(),
+    true,
+  );
+  releaseStatus();
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".task-status-editor select").value === "todo" &&
+      !document.querySelector(".task-status-editor button"),
+  );
+  assert.equal(statusPatches, 1, "double activation sends one PATCH");
+  assert.equal(tasks[0].status, "todo");
+  await page.unroute("**/api/tasks/" + tasks[0].id);
+  await statusSelect.selectOption("backlog");
+  await statusEditor.getByRole("button", { name: "保存", exact: true }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".task-status-editor select").value === "backlog" &&
+      !document.querySelector(".task-status-editor button"),
+  );
+  await assertMobileInputSizes(page);
+  await page.screenshot({ path: join(screenshots, "mobile-detail-status.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  console.log("PASS mobile detail status selection, cancel, error, save and duplicate protection");
   assert.equal(await drawer.getByRole("button", { name: "変更", exact: true }).count(), 0);
   assert.equal(await drawer.locator(".event-form,.routing-summary,.dispatch").count(), 0);
   assert.equal(await drawer.getByText("タスクを編集", { exact: true }).count(), 0);
@@ -1122,6 +1204,21 @@ try {
   for (const status of ["review", "stopped"]) {
     tasks[0].status = status;
     await reloadBoard(page);
+    const desktopCard = page.locator(`.task-state-${status} .task-card`).first();
+    const beforeDragVersion = tasks[0].version;
+    await assertDragAppearance(desktopCard, false);
+    await desktopCard.dispatchEvent("dragstart", {
+      dataTransfer: await page.evaluateHandle(() => new DataTransfer()),
+    });
+    await assertDragAppearance(desktopCard, true);
+    await page.locator('.column[data-drop-status="done"]').dispatchEvent("dragover", {
+      dataTransfer: await page.evaluateHandle(() => new DataTransfer()),
+    });
+    await assertDragAppearance(desktopCard, true);
+    await page.screenshot({ path: join(screenshots, `desktop-drag-${status}.png`) });
+    await desktopCard.dispatchEvent("dragend");
+    await assertDragAppearance(desktopCard, false);
+    assert.equal(tasks[0].version, beforeDragVersion, "cancelled drag does not write");
     const update = page.waitForResponse(
       (response) =>
         response.request().method() === "PATCH" &&
@@ -1135,6 +1232,7 @@ try {
       .locator(`.column[data-drop-status="done"] [data-task-id="${tasks[0].id}"]`)
       .waitFor();
     assert.equal(tasks[0].status, "done", `${status} can be dragged to Done`);
+    await assertDragAppearance(page.locator(`[data-task-id="${tasks[0].id}"] .task-card`), false);
   }
   await page.setViewportSize(dragViewport);
   tasks.splice(1);
@@ -1801,7 +1899,12 @@ try {
     false,
     "long-press card dragging does not arm refresh",
   );
+  await assertDragAppearance(touchCard, true);
+  await touchPage.screenshot({ path: join(screenshots, "mobile-drag-held.png") });
+  const beforeCancelVersion = tasks.find((task) => task.id === tasks[0].id).version;
   await touchCdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+  await assertDragAppearance(touchCard, false);
+  assert.equal(tasks[0].version, beforeCancelVersion, "touch cancel does not write");
   await touchPage.setViewportSize({ width: 390, height: 500 });
   const activeCards = touchPage.locator('.column[data-drop-status="in_progress"] .cards');
   const fixedLabels = await labels.boundingBox();
@@ -1848,6 +1951,7 @@ try {
     await showPanel(touchPage, "in_progress");
     const card = touchPage.locator(`.task-state-${status} .task-card`).first();
     await swipe(card, 0, 0, { hold: 350, release: false });
+    await assertDragAppearance(card, true);
     const box = await card.boundingBox();
     await touchCdp.send("Input.dispatchTouchEvent", {
       type: "touchMove",
@@ -1862,6 +1966,7 @@ try {
       type: "touchMove",
       touchPoints: [{ x: 190, y: box.y + box.height / 2 }],
     });
+    await assertDragAppearance(card, true);
     const update = touchPage.waitForResponse(
       (response) =>
         response.request().method() === "PATCH" &&
@@ -1873,8 +1978,25 @@ try {
       .locator(`.column[data-drop-status="done"] [data-task-id="${tasks[0].id}"]`)
       .waitFor();
     assert.equal(tasks[0].status, "done", `mobile long-press moves ${status} to Done`);
+    await assertDragAppearance(
+      touchPage.locator(`[data-task-id="${tasks[0].id}"] .task-card`),
+      false,
+    );
   }
   console.log("PASS review and stopped cards can be dragged to Done on desktop and mobile");
+  for (const status of ["in_progress", "review", "stopped", "done"]) {
+    tasks[0].status = status;
+    await touchPage.goto(base + "/tasks/" + tasks[0].id);
+    const protectedSelect = touchPage.locator(".task-status-editor select");
+    await protectedSelect.waitFor();
+    assert.equal(
+      await protectedSelect.isDisabled(),
+      true,
+      `${status} cannot be changed by the detail selector`,
+    );
+    assert.equal(await protectedSelect.locator("option").count(), 1);
+  }
+  console.log("PASS detail selector preserves execution and approval transitions");
   await touchContext.close();
   console.log(
     "PASS mobile pull-to-refresh, cancellation, single flight, failure recovery and draft preservation",

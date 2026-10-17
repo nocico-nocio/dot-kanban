@@ -1356,7 +1356,13 @@ button:disabled {
   position: relative;
 }
 .task-wrap.dragging {
-  opacity: 0.55;
+  opacity: 0.45;
+  z-index: 2;
+}
+.task-wrap.dragging .task-card {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 14px 28px #163e3140;
+  cursor: grabbing;
 }
 .task-card[draggable="true"] {
   cursor: grab;
@@ -3280,4 +3286,25 @@ html.pull-refresh-enabled body {
   .app :is(input, textarea, select, [contenteditable="true"]):not(.inline-title textarea) {
     font-size: max(16px, 1em) !important;
   }
+}
+
+.task-status-editor label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.task-status-editor select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 16px;
+}
+.task-status-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.task-status-actions button {
+  min-height: 44px;
 }

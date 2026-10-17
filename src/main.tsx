@@ -27,6 +27,7 @@ import { usePullToRefresh } from "./usePullToRefresh";
 import { ConnectionPicker } from "./ConnectionPicker";
 import type { ConnectionState } from "../worker/connections";
 import { TaskExecutionBadge } from "./TaskExecutionBadge";
+import { TaskStatusEditor } from "./TaskStatusEditor";
 import { InlineText } from "./InlineText";
 import { DescriptionEditor, DescriptionContent } from "./DescriptionEditor";
 import { OverflowMenu } from "./OverflowMenu";
@@ -904,6 +905,7 @@ function App() {
             const detail = await call<{ task: Task; events: Event[] }>(`/api/tasks/${task.id}`);
             if (selectedRef.current?.id === task.id) {
               selectedRef.current = detail.task;
+              setSelected(detail.task);
               setEvents(detail.events);
             }
           } catch {
@@ -1431,6 +1433,25 @@ function App() {
                       }}
                     />
                   </div>
+                  <TaskStatusEditor
+                    key={selected.id}
+                    locale={locale}
+                    value={selected.status}
+                    options={(
+                      ["backlog", "todo", "in_progress", "review", "done", "stopped"] as Status[]
+                    ).filter(
+                      (status) =>
+                        status === selected.status ||
+                        (!selected.archived_at &&
+                          movable(selected.status) &&
+                          canMove(selected.status, status)),
+                    )}
+                    disabled={busy || Boolean(selected.archived_at)}
+                    onSave={async (status) => {
+                      await updateSelected({ status: status as Status });
+                      if (selectedRef.current) setMobileStatus(selectedRef.current.status);
+                    }}
+                  />
                   {selected.status === "backlog" && !selected.archived_at ? (
                     <DescriptionEditor
                       locale={locale}
